@@ -275,7 +275,27 @@ def test_checkpoint_additional_info(tmp_path):
     VecNormalize.load(checkpoint_dir / "rl_model_vecnormalize_200_steps.pkl", dummy_vec_env)
 
 
-def test_eval_callback_chaining(tmp_path):
+@pytest.mark.parametrize("callback_arg", ["callback_on_new_best", "callback_after_eval"])
+def test_callback_list_parent_initialization(callback_arg):
+    class CheckParentCallback(BaseCallback):
+        def _init_callback(self):
+            assert isinstance(self.parent, EvalCallback)
+
+        def _on_step(self):
+            return True
+
+    callback = CheckParentCallback()
+    eval_callback = EvalCallback(gym.make("CartPole-v1"), **{callback_arg: CallbackList([callback])})
+    model = A2C("MlpPolicy", "CartPole-v1", device="cpu")
+    try:
+        eval_callback.init_callback(model)
+    finally:
+        eval_callback.eval_env.close()
+        model.get_env().close()
+
+
+@pytest.mark.parametrize("n_callback_lists", [1, 2, 3])
+def test_eval_callback_chaining(tmp_path, n_callback_lists):
     class DummyCallback(BaseCallback):
         def _on_step(self):
             # Check that the parent callback is an EvalCallback
@@ -284,6 +304,11 @@ def test_eval_callback_chaining(tmp_path):
             return True
 
     stop_on_threshold_callback = StopTrainingOnRewardThreshold(reward_threshold=-200, verbose=1)
+    callback_on_new_best = CallbackList([DummyCallback(), stop_on_threshold_callback])
+    callback_after_eval = CallbackList([DummyCallback()])
+    for _ in range(n_callback_lists - 1):
+        callback_on_new_best = CallbackList([callback_on_new_best])
+        callback_after_eval = CallbackList([callback_after_eval])
 
     eval_callback = EvalCallback(
         gym.make("Pendulum-v1"),
@@ -292,8 +317,8 @@ def test_eval_callback_chaining(tmp_path):
         eval_freq=32,
         deterministic=True,
         render=False,
-        callback_on_new_best=CallbackList([DummyCallback(), stop_on_threshold_callback]),
-        callback_after_eval=CallbackList([DummyCallback()]),
+        callback_on_new_best=callback_on_new_best,
+        callback_after_eval=callback_after_eval,
         warn=False,
     )
 

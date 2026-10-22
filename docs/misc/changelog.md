@@ -10,6 +10,9 @@
 
 ### Bug Fixes:
 
+- Fixed frame-stacked observation bounds to follow the same frame order as the observations, including nonuniform `Box` bounds and dictionary observations (@M-Colley)
+- Fixed parent callback initialization for nested `CallbackList` instances, preventing failures in evaluation stopping callbacks (@M-Colley)
+- Fixed `HerReplayBuffer.reset()` retaining old episode metadata, which allowed stale transitions to be sampled after resetting the buffer (@M-Colley)
 - Fixed file descriptor leak in `SubprocVecEnv.close()` by closing parent-side pipes to prevent "too many open files" errors in long-running loops
 
 ### [SB3-Contrib]
@@ -1907,7 +1910,7 @@ And all the contributors:
 @lutogniew @lbergmann1 @lukashass @BertrandDecoster @pseudo-rnd-thoughts @stefanbschneider @kyle-he @PatrickHelm @corentinlger
 @marekm4 @stagoverflow @rushitnshah @markscsmith @NickLucche @cschindlbeck @peteole @jak3122 @will-maclean
 @brn-dev @jmacglashan @kplers @MarcDcls @chrisgao99 @pstahlhofen @akanto @Trenza1ore @JonathanColetti @unexploredtest @Koustav-github
-@m-abr
+@m-abr @M-Colley
 
 [@adamgleave]: https://github.com/adamgleave
 [@araffin]: https://github.com/araffin

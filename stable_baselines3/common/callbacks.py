@@ -203,11 +203,11 @@ class CallbackList(BaseCallback):
 
     def _init_callback(self) -> None:
         for callback in self.callbacks:
-            callback.init_callback(self.model)
-
             # Fix for https://github.com/DLR-RM/stable-baselines3/issues/1791
-            # pass through the parent callback to all children
+            # Pass the parent before initialization so nested callback lists
+            # and callbacks that use their parent during initialization have access to it.
             callback.parent = self.parent
+            callback.init_callback(self.model)
 
     def _on_training_start(self) -> None:
         for callback in self.callbacks:

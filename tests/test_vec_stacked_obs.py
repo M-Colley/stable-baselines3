@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from gymnasium import spaces
 
 from stable_baselines3.common.vec_env.stacked_observations import StackedObservations
@@ -7,6 +8,53 @@ compute_stacking = StackedObservations.compute_stacking
 NUM_ENVS = 2
 N_STACK = 4
 H, W, C = 16, 24, 3
+
+
+@pytest.mark.parametrize("channels_order", [None, "first", "last"])
+@pytest.mark.parametrize("dict_observations", [False, True])
+@pytest.mark.parametrize("dtype", [np.float32, np.int16])
+def test_stacked_observation_bounds(channels_order, dict_observations, dtype):
+    """Nonuniform bounds must follow the order of complete frames throughout an episode."""
+    low = -np.arange(1, 7, dtype=dtype).reshape(2, 3)
+    high = -2 * low
+    space = spaces.Box(low=low, high=high, dtype=dtype)
+    observation_space = spaces.Dict({"observation": space}) if dict_observations else space
+    stacked_observations = StackedObservations(NUM_ENVS, N_STACK, observation_space, channels_order)
+    stacked_space = stacked_observations.stacked_observation_space
+    box_space = stacked_space["observation"] if dict_observations else stacked_space
+    axis = 0 if channels_order == "first" else -1
+
+    np.testing.assert_array_equal(box_space.low, np.concatenate([low] * N_STACK, axis=axis))
+    np.testing.assert_array_equal(box_space.high, np.concatenate([high] * N_STACK, axis=axis))
+    assert box_space.dtype == dtype
+
+    def wrap_observation(observation):
+        return {"observation": observation} if dict_observations else observation
+
+    def check_observations(observations):
+        box_observations = observations["observation"] if dict_observations else observations
+        assert box_observations.dtype == dtype
+        for env_idx in range(NUM_ENVS):
+            assert stacked_space.contains(wrap_observation(box_observations[env_idx]))
+
+    first_observations = np.stack([high] * NUM_ENVS)
+    stacked_obs = stacked_observations.reset(wrap_observation(first_observations))
+    check_observations(stacked_obs)
+
+    second_observations = np.stack([low] * NUM_ENVS)
+    stacked_obs, _ = stacked_observations.update(
+        wrap_observation(second_observations), np.zeros(NUM_ENVS, dtype=bool), [{} for _ in range(NUM_ENVS)]
+    )
+    check_observations(stacked_obs)
+
+    infos = [{"terminal_observation": wrap_observation(high.copy())}, {}]
+    stacked_obs, infos = stacked_observations.update(wrap_observation(first_observations), np.array([True, False]), infos)
+    check_observations(stacked_obs)
+    terminal_observation = infos[0]["terminal_observation"]
+    assert stacked_space.contains(terminal_observation)
+    box_terminal = terminal_observation["observation"] if dict_observations else terminal_observation
+    np.testing.assert_array_equal(box_terminal, np.concatenate([np.zeros_like(low), high, low, high], axis=axis))
+    assert box_terminal.dtype == dtype
 
 
 def test_compute_stacking_box():

@@ -324,6 +324,60 @@ def test_full_replay_buffer():
 
 
 @pytest.mark.parametrize("n_envs", [1, 2])
+@pytest.mark.parametrize("wrap_buffer", [False, True])
+def test_replay_buffer_reset(n_envs, wrap_buffer):
+    env = make_vec_env(lambda: BitFlippingEnv(n_bits=4, continuous=True), n_envs=n_envs)
+    replay_buffer = HerReplayBuffer(
+        buffer_size=6 * n_envs,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        env=env,
+        n_envs=n_envs,
+        device="cpu",
+    )
+    observations = {key: np.zeros((n_envs, 4), dtype=space.dtype) for key, space in env.observation_space.spaces.items()}
+    actions = np.zeros((n_envs, 4), dtype=np.float32)
+    infos = [{} for _ in range(n_envs)]
+    try:
+        # Keep completed episodes and unfinished trajectories, including after wrapping.
+        for step in range(11 if wrap_buffer else 5):
+            dones = (step + 1) % np.arange(2, n_envs + 2) == 0
+            replay_buffer.add(observations, observations, actions, np.zeros(n_envs), dones, infos)
+        assert replay_buffer.ep_length.any()
+        assert (replay_buffer._current_ep_start != replay_buffer.pos).all()
+        assert replay_buffer.full == wrap_buffer
+
+        replay_buffer.reset()
+        assert replay_buffer.size() == 0
+        assert not replay_buffer.full
+        with pytest.raises(RuntimeError, match="Unable to sample before the end of the first episode"):
+            replay_buffer.sample(10)
+        assert not replay_buffer.ep_start.any()
+        assert not replay_buffer.ep_length.any()
+        assert not replay_buffer._current_ep_start.any()
+
+        # New transitions must stay unavailable until their own episode ends.
+        observations = {key: np.ones_like(obs) for key, obs in observations.items()}
+        actions[:] = np.arange(1, n_envs + 1)[:, None] / 4
+        replay_buffer.add(observations, observations, actions, np.ones(n_envs), np.zeros(n_envs), infos)
+        with pytest.raises(RuntimeError, match="Unable to sample before the end of the first episode"):
+            replay_buffer.sample(10)
+
+        dones = np.zeros(n_envs, dtype=bool)
+        dones[0] = True
+        replay_buffer.add(observations, observations, actions, np.ones(n_envs), dones, infos)
+        np.testing.assert_array_equal(replay_buffer.ep_length[:2, 0], 2)
+        assert not replay_buffer.ep_length[2:].any()
+        assert not replay_buffer.ep_length[:, 1:].any()
+        samples = replay_buffer.sample(10)
+        assert th.all(samples.observations["observation"] == 1)
+        assert th.all(samples.next_observations["observation"] == 1)
+        assert th.all(samples.actions == 0.25)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("n_envs", [1, 2])
 @pytest.mark.parametrize("n_steps", [4, 5])
 @pytest.mark.parametrize("handle_timeout_termination", [False, True])
 def test_truncate_last_trajectory(n_envs, recwarn, n_steps, handle_timeout_termination):
