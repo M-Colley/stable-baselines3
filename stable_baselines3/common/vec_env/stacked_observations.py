@@ -51,8 +51,8 @@ class StackedObservations(Generic[TObs]):
             self.channels_first, self.stack_dimension, self.stacked_shape, self.repeat_axis = self.compute_stacking(
                 n_stack, observation_space, channels_order
             )
-            low = np.repeat(observation_space.low, n_stack, axis=self.repeat_axis)
-            high = np.repeat(observation_space.high, n_stack, axis=self.repeat_axis)
+            low = np.concatenate([observation_space.low] * n_stack, axis=self.repeat_axis)
+            high = np.concatenate([observation_space.high] * n_stack, axis=self.repeat_axis)
             self.stacked_observation_space = spaces.Box(
                 low=low,
                 high=high,

@@ -98,6 +98,14 @@ class HerReplayBuffer(DictReplayBuffer):
         self.ep_length = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
         self._current_ep_start = np.zeros(self.n_envs, dtype=np.int64)
 
+    def reset(self) -> None:
+        """Reset the buffer and episode metadata."""
+        super().reset()
+        # Episode metadata controls which transitions can be sampled by HER.
+        self.ep_start.fill(0)
+        self.ep_length.fill(0)
+        self._current_ep_start.fill(0)
+
     def __getstate__(self) -> dict[str, Any]:
         """
         Gets state for pickling.
